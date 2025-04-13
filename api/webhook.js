@@ -39,7 +39,7 @@ export default async function handler(req, res) {
     }
 
     // Step 3: 映射到 WunderTrading 格式
-    const exchange = (payload.exchange || "BINANCE").toLowerCase();
+    const exchange = (payload.exchange || "BINANCE").toLowerCase();  // ✅ 自动转换为小写
     const symbol = payload.symbol || "BTCUSDT";
     const qty = parseFloat(payload.quantity || defaultQuantity);
 
