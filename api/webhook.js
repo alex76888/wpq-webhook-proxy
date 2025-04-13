@@ -3,7 +3,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method Not Allowed" });
   }
 
-  const wtWebhookURL = "https://wtalerts.com/bot/trading_view";
+  const wtWebhookURL = "https://wtalerts.com/bot/custom";
 
   try {
     const response = await fetch(wtWebhookURL, {
