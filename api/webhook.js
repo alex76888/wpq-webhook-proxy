@@ -4,67 +4,96 @@ export default async function handler(req, res) {
   }
 
   const wtWebhookURL = process.env.WT_WEBHOOK_URL || "https://wtalerts.com/bot/custom";
+  const defaultQuantity = parseFloat(process.env.TRADE_QTY || "0.01");
 
   try {
-    // 打印原始Payload（确保存储到日志）
-    console.log("Received payload from TradingView:", JSON.stringify(req.body, null, 2));
+    console.log("📥 Raw Payload:", JSON.stringify(req.body));
 
     let payload = req.body;
 
-    // 如果是字符串，尝试解析为JSON
     if (typeof payload === "string") {
       try {
         payload = JSON.parse(payload);
       } catch (e) {
-        console.error("Failed to parse payload as JSON:", payload, e);
         return res.status(400).json({ error: "Invalid JSON payload" });
       }
     }
 
-    // 打印解析前的Payload
-    console.log("Payload after string parsing:", JSON.stringify(payload, null, 2));
-
-    // 处理嵌套的message字段
+    // 如果有 message 字段，进一步解析
     if (payload.message) {
       try {
         payload = JSON.parse(payload.message);
       } catch (e) {
-        console.error("Failed to parse message field:", payload.message, e);
         return res.status(400).json({ error: "Invalid message format in 'message' field" });
       }
     }
 
-    // 打印解析后的Payload
-    console.log("Parsed payload:", JSON.stringify(payload, null, 2));
-
-    // 验证code字段
     if (!payload.code) {
-      console.error("Missing 'code' in parsed payload:", payload);
       return res.status(400).json({ error: "Missing 'code' in payload" });
     }
 
-    // 转发到WunderTrading
-    console.log("Forwarding to WunderTrading:", wtWebhookURL);
+    // 🔁 映射 TradingView code → WunderTrading 请求格式
+    let mappedPayload = null;
+
+    const exchange = (payload.exchange || "BINANCE").toLowerCase();
+    const symbol = payload.symbol || "BTCUSDT";
+    const qty = parseFloat(payload.quantity || defaultQuantity);
+
+    switch (payload.code) {
+      case "ENTER-LONG":
+        mappedPayload = {
+          action: "buy",
+          symbol: symbol,
+          exchange: exchange,
+          quantity: qty,
+        };
+        break;
+
+      case "ENTER-SHORT":
+        mappedPayload = {
+          action: "sell",
+          symbol: symbol,
+          exchange: exchange,
+          quantity: qty,
+        };
+        break;
+
+      case "EXIT-LONG":
+      case "EXIT-SHORT":
+        mappedPayload = {
+          action: "close",
+          symbol: symbol,
+          exchange: exchange,
+        };
+        break;
+
+      default:
+        return res.status(400).json({ error: `Unsupported code: ${payload.code}` });
+    }
+
+    console.log("📤 Mapped Payload to WT:", JSON.stringify(mappedPayload));
+
     const response = await fetch(wtWebhookURL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(mappedPayload),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("WunderTrading response error:", response.status, errorText);
+      console.error("❌ WT error:", response.status, errorText);
       throw new Error(`WunderTrading responded with status ${response.status}: ${errorText}`);
     }
 
     const result = await response.json();
-    console.log("WunderTrading response:", result);
+    console.log("✅ Forwarded to WT:", result);
+
     res.status(200).json({
       status: "✅ Forwarded to WunderTrading",
       response: result,
     });
   } catch (err) {
-    console.error("Webhook forwarding error:", err.message);
+    console.error("❌ Webhook forwarding error:", err.message);
     res.status(500).json({ error: "Webhook forwarding failed", details: err.message });
   }
 }
