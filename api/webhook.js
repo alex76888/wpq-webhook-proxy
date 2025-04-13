@@ -21,13 +21,13 @@ export default async function handler(req, res) {
       }
     }
 
-    // 处理嵌套的message字段
+    // 处理嵌套的message字段（TradingView可能发送 {"message": "..."}）
     if (payload.message) {
       try {
         payload = JSON.parse(payload.message);
       } catch (e) {
         console.error("Failed to parse message field:", payload.message, e);
-        return res.status(400).json({ error: "Invalid message format" });
+        return res.status(400).json({ error: "Invalid message format in 'message' field" });
       }
     }
 
