@@ -4,63 +4,42 @@ export default async function handler(req, res) {
   }
 
   try {
-    let rawBody = "";
+    let body = "";
 
-    // 读取 body 内容（兼容所有来源）
     await new Promise((resolve, reject) => {
-      req.on("data", chunk => rawBody += chunk);
+      req.on("data", chunk => body += chunk);
       req.on("end", resolve);
       req.on("error", reject);
     });
 
-    rawBody = rawBody.trim();
-    let code = "";
+    body = body.trim();
 
-    try {
-      const parsed = JSON.parse(rawBody);
-
-      // 处理嵌套 message JSON：{ "message": "{\"code\":\"...\"}" }
-      if (parsed.message) {
-        const messageJson = JSON.parse(parsed.message);
-        if (typeof messageJson.code === "string") {
-          code = messageJson.code;
-        }
-      }
-
-      // 或者直接是 { "code": "..." }
-      if (typeof parsed.code === "string") {
-        code = parsed.code;
-      }
-    } catch (err) {
-      // 非 JSON，则看作是直接字符串
-      code = rawBody;
-    }
-
-    // 验证格式
-    const isValid = typeof code === "string" &&
-                    (code.startsWith("ENTER-") || code.startsWith("EXIT-")) &&
-                    code.includes("_");
-
+    // 校验格式是否为 ENTER-... 或 EXIT-...
+    const isValid = body.startsWith("ENTER-") || body.startsWith("EXIT-");
     if (!isValid) {
-      return res.status(400).json({ error: "Invalid code format", received: code });
+      return res.status(400).json({ error: "Invalid alert message", received: body });
     }
 
-    // ✅ 正式转发给 WunderTrading
-    const response = await fetch("https://wtalerts.com/bot/custom", {
+    // 转发到 WunderTrading
+    const forwardResponse = await fetch("https://wtalerts.com/bot/custom", {
       method: "POST",
       headers: { "Content-Type": "text/plain" },
-      body: code.trim()
+      body: body
     });
 
-    const result = await response.text();
+    const result = await forwardResponse.text();
 
-    if (!response.ok) {
-      return res.status(502).json({ error: "WunderTrading rejected", detail: result });
+    if (!forwardResponse.ok) {
+      return res.status(502).json({
+        error: "WunderTrading rejected",
+        status: forwardResponse.status,
+        detail: result
+      });
     }
 
     return res.status(200).json({
-      status: "✅ Forwarded to WunderTrading",
-      code: code,
+      status: "✅ Forwarded successfully",
+      sent: body,
       response: result
     });
 
