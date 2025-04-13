@@ -6,36 +6,42 @@ export default async function handler(req, res) {
   const wtWebhookURL = process.env.WT_WEBHOOK_URL || "https://wtalerts.com/bot/custom";
 
   try {
-    // 打印收到的 Payload，方便调试
-    console.log("Received payload from TradingView:", req.body);
+    // 打印原始Payload
+    console.log("Received payload from TradingView:", JSON.stringify(req.body, null, 2));
 
-    // TradingView 可能发送字符串或嵌套的 JSON，尝试解析
     let payload = req.body;
 
-    // 如果是字符串，尝试解析为 JSON
+    // 如果是字符串，尝试解析为JSON
     if (typeof payload === "string") {
       try {
         payload = JSON.parse(payload);
       } catch (e) {
+        console.error("Failed to parse payload as JSON:", payload, e);
         return res.status(400).json({ error: "Invalid JSON payload" });
       }
     }
 
-    // 如果是 {"message": "..."} 格式，提取 message 字段
+    // 处理嵌套的message字段
     if (payload.message) {
       try {
         payload = JSON.parse(payload.message);
       } catch (e) {
+        console.error("Failed to parse message field:", payload.message, e);
         return res.status(400).json({ error: "Invalid message format" });
       }
     }
 
-    // 验证 Payload 是否包含 code 字段
+    // 打印解析后的Payload
+    console.log("Parsed payload:", JSON.stringify(payload, null, 2));
+
+    // 验证code字段
     if (!payload.code) {
+      console.error("Missing 'code' in parsed payload:", payload);
       return res.status(400).json({ error: "Missing 'code' in payload" });
     }
 
-    // 转发到 WunderTrading
+    // 转发到WunderTrading
+    console.log("Forwarding to WunderTrading:", wtWebhookURL);
     const response = await fetch(wtWebhookURL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -43,16 +49,19 @@ export default async function handler(req, res) {
     });
 
     if (!response.ok) {
-      throw new Error(`WunderTrading responded with status ${response.status}`);
+      const errorText = await response.text();
+      console.error("WunderTrading response error:", response.status, errorText);
+      throw new Error(`WunderTrading responded with status ${response.status}: ${errorText}`);
     }
 
     const result = await response.json();
+    console.log("WunderTrading response:", result);
     res.status(200).json({
       status: "✅ Forwarded to WunderTrading",
       response: result,
     });
   } catch (err) {
-    console.error("Webhook forwarding error:", err);
-    res.status(500).json({ error: "Webhook forwarding failed" });
+    console.error("Webhook forwarding error:", err.message);
+    res.status(500).json({ error: "Webhook forwarding failed", details: err.message });
   }
 }
