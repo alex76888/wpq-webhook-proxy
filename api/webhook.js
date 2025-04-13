@@ -6,7 +6,7 @@ export default async function handler(req, res) {
   try {
     let rawBody = "";
 
-    // 收集请求体内容
+    // 读取 body 内容（兼容所有来源）
     await new Promise((resolve, reject) => {
       req.on("data", chunk => rawBody += chunk);
       req.on("end", resolve);
@@ -16,57 +16,55 @@ export default async function handler(req, res) {
     rawBody = rawBody.trim();
     let code = "";
 
-    // 尝试解析为 JSON
     try {
       const parsed = JSON.parse(rawBody);
 
-      // 如果包含嵌套 message 字段
+      // 处理嵌套 message JSON：{ "message": "{\"code\":\"...\"}" }
       if (parsed.message) {
-        const nested = JSON.parse(parsed.message);
-        if (typeof nested.code === "string") {
-          code = nested.code;
+        const messageJson = JSON.parse(parsed.message);
+        if (typeof messageJson.code === "string") {
+          code = messageJson.code;
         }
-      } else if (typeof parsed.code === "string") {
+      }
+
+      // 或者直接是 { "code": "..." }
+      if (typeof parsed.code === "string") {
         code = parsed.code;
       }
-    } catch (e) {
-      // 不是 JSON，可能是纯文本
+    } catch (err) {
+      // 非 JSON，则看作是直接字符串
       code = rawBody;
     }
 
-    // 最终校验 code 格式
-    if (!code || !(code.startsWith("ENTER-") || code.startsWith("EXIT-"))) {
-      return res.status(400).json({
-        error: "Invalid or missing 'code'",
-        received: rawBody
-      });
+    // 验证格式
+    const isValid = typeof code === "string" &&
+                    (code.startsWith("ENTER-") || code.startsWith("EXIT-")) &&
+                    code.includes("_");
+
+    if (!isValid) {
+      return res.status(400).json({ error: "Invalid code format", received: code });
     }
 
-    // 发给 WunderTrading
-    const wtRes = await fetch("https://wtalerts.com/bot/trading_view", {
+    // ✅ 正式转发给 WunderTrading
+    const response = await fetch("https://wtalerts.com/bot/custom", {
       method: "POST",
       headers: { "Content-Type": "text/plain" },
-      body: code
+      body: code.trim()
     });
 
-    const result = await wtRes.text();
+    const result = await response.text();
 
-    if (!wtRes.ok) {
-      return res.status(502).json({
-        error: "WunderTrading rejected",
-        status: wtRes.status,
-        detail: result
-      });
+    if (!response.ok) {
+      return res.status(502).json({ error: "WunderTrading rejected", detail: result });
     }
 
     return res.status(200).json({
       status: "✅ Forwarded to WunderTrading",
-      forward: code,
+      code: code,
       response: result
     });
 
   } catch (err) {
-    console.error("🚨 Internal Error:", err);
-    return res.status(500).json({ error: "Server error", detail: err.message });
+    return res.status(500).json({ error: "Server Error", detail: err.message });
   }
 }
