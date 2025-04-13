@@ -7,37 +7,43 @@ export default async function handler(req, res) {
   const defaultQuantity = parseFloat(process.env.TRADE_QTY || "0.01");
 
   try {
-    console.log("📥 Raw Payload:", JSON.stringify(req.body));
+    // Step 1: 打印原始 payload
+    console.log("📥 Raw Payload:", JSON.stringify(req.body, null, 2));
 
     let payload = req.body;
 
+    // 如果是字符串，尝试解析 JSON
     if (typeof payload === "string") {
       try {
         payload = JSON.parse(payload);
       } catch (e) {
-        return res.status(400).json({ error: "Invalid JSON payload" });
+        console.error("❌ Failed to parse raw string payload:", payload);
+        return res.status(400).json({ error: "Invalid JSON payload string" });
       }
     }
 
-    // 如果有 message 字段，进一步解析
+    // 如果嵌套在 payload.message 里，再解析一次
     if (payload.message) {
       try {
         payload = JSON.parse(payload.message);
       } catch (e) {
-        return res.status(400).json({ error: "Invalid message format in 'message' field" });
+        console.error("❌ Failed to parse payload.message:", payload.message);
+        return res.status(400).json({ error: "Invalid message field" });
       }
     }
 
+    // Step 2: 校验是否有 code 字段
     if (!payload.code) {
+      console.error("❌ Missing 'code' in payload:", payload);
       return res.status(400).json({ error: "Missing 'code' in payload" });
     }
 
-    // 🔁 映射 TradingView code → WunderTrading 请求格式
-    let mappedPayload = null;
-
+    // Step 3: 映射到 WunderTrading 格式
     const exchange = (payload.exchange || "BINANCE").toLowerCase();
     const symbol = payload.symbol || "BTCUSDT";
     const qty = parseFloat(payload.quantity || defaultQuantity);
+
+    let mappedPayload = null;
 
     switch (payload.code) {
       case "ENTER-LONG":
@@ -68,11 +74,14 @@ export default async function handler(req, res) {
         break;
 
       default:
+        console.error("❌ Unsupported code:", payload.code);
         return res.status(400).json({ error: `Unsupported code: ${payload.code}` });
     }
 
-    console.log("📤 Mapped Payload to WT:", JSON.stringify(mappedPayload));
+    // Step 4: 打印即将发送的 payload
+    console.log("🚀 Mapped Payload to WT:", JSON.stringify(mappedPayload, null, 2));
 
+    // Step 5: 发送给 WunderTrading
     const response = await fetch(wtWebhookURL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -81,19 +90,19 @@ export default async function handler(req, res) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("❌ WT error:", response.status, errorText);
-      throw new Error(`WunderTrading responded with status ${response.status}: ${errorText}`);
+      console.error("❌ WunderTrading Error:", response.status, errorText);
+      return res.status(502).json({ error: "WunderTrading rejected request", status: response.status, response: errorText });
     }
 
     const result = await response.json();
-    console.log("✅ Forwarded to WT:", result);
-
+    console.log("✅ Success Response from WT:", result);
     res.status(200).json({
       status: "✅ Forwarded to WunderTrading",
       response: result,
     });
+
   } catch (err) {
-    console.error("❌ Webhook forwarding error:", err.message);
+    console.error("🔥 Unhandled Error:", err.message);
     res.status(500).json({ error: "Webhook forwarding failed", details: err.message });
   }
 }
