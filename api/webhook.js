@@ -6,7 +6,7 @@ export default async function handler(req, res) {
   const wtWebhookURL = process.env.WT_WEBHOOK_URL || "https://wtalerts.com/bot/custom";
 
   try {
-    // 打印原始Payload
+    // 打印原始Payload（确保存储到日志）
     console.log("Received payload from TradingView:", JSON.stringify(req.body, null, 2));
 
     let payload = req.body;
@@ -21,7 +21,10 @@ export default async function handler(req, res) {
       }
     }
 
-    // 处理嵌套的message字段（TradingView可能发送 {"message": "..."}）
+    // 打印解析前的Payload
+    console.log("Payload after string parsing:", JSON.stringify(payload, null, 2));
+
+    // 处理嵌套的message字段
     if (payload.message) {
       try {
         payload = JSON.parse(payload.message);
