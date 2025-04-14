@@ -1,4 +1,4 @@
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method Not Allowed" });
   }
@@ -6,7 +6,6 @@ export default async function handler(req, res) {
   try {
     let rawBody = "";
 
-    // 收集原始请求体
     await new Promise((resolve, reject) => {
       req.on("data", chunk => rawBody += chunk);
       req.on("end", resolve);
@@ -15,7 +14,6 @@ export default async function handler(req, res) {
 
     let payload = rawBody;
 
-    // 尝试解析为 JSON
     try {
       const parsed = JSON.parse(rawBody);
       if (typeof parsed === "object" && parsed.code) {
@@ -27,10 +25,9 @@ export default async function handler(req, res) {
         }
       }
     } catch (e) {
-      // 不是 JSON，直接用原始文本
+      // 忽略错误，使用原始 body
     }
 
-    // 检查是否为合法快捷命令
     const isValid = typeof payload === "string" &&
       (payload.startsWith("ENTER-") || payload.startsWith("EXIT-")) &&
       payload.includes("_");
@@ -39,7 +36,6 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Invalid payload", received: payload });
     }
 
-    // 正式转发给 WunderTrading
     const response = await fetch("https://wtalerts.com/bot/custom", {
       method: "POST",
       headers: { "Content-Type": "text/plain" },
@@ -66,3 +62,6 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "Internal Server Error", detail: err.message });
   }
 }
+
+// 导出 handler 给 Express 用
+module.exports = handler;
